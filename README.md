@@ -84,19 +84,19 @@ See [docs/INTERACTIVE_FLAMEGRAPH.md](docs/INTERACTIVE_FLAMEGRAPH.md) for detaile
 
 ### Audit log signing (software / HSM)
 
-`Glassbox` includes a small utility command to generate a deterministic, signed audit log from a JSON payload.
+`Glassbox` includes a utility command to generate a deterministic, signed audit log from a JSON payload.
 
 #### Software signing (Ed25519 private key)
 
 Provide a PKCS#8 PEM Ed25519 private key via env or CLI:
 
 - Env: `GLASSBOX_AUDIT_PRIVATE_KEY_PEM`
-- CLI: `--software-private-key <pem>`
+- CLI: `--software-private-key <pem-or-path>`
 
 Example:
 
 ```bash
-node dist/index.js audit:sign \
+glassbox audit:sign \
   --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}' \
   --software-private-key "$(cat ./ed25519-private-key.pem)"
 ```
@@ -107,33 +107,40 @@ Select the PKCS#11 provider with `--hsm-provider pkcs11` and configure the modul
 
 Required env vars:
 
-- `GLASSBOX_PKCS11_MODULE` (path to the PKCS#11 module `.so`)
-- `GLASSBOX_PKCS11_PIN`
+- `GLASSBOX_PKCS11_MODULE` — path to the PKCS#11 module `.so`/`.dylib`/`.dll`
+- `GLASSBOX_PKCS11_PIN` — user PIN
 - `GLASSBOX_PKCS11_KEY_LABEL` **or** `GLASSBOX_PKCS11_KEY_ID` (hex)
-- `GLASSBOX_PKCS11_PUBLIC_KEY_PEM` (SPKI PEM public key for verification/audit metadata)
 
 Optional:
 
-- `GLASSBOX_PKCS11_SLOT` (numeric index into the slot list)
-- `GLASSBOX_PKCS11_TOKEN_LABEL`
-- `GLASSBOX_PKCS11_PIV_SLOT` (YubiKey PIV slot such as 9a, 9c, 9d, 9e, 82-95, f9)
+- `GLASSBOX_PKCS11_SLOT` — numeric slot index (default `0`)
+- `GLASSBOX_PKCS11_TOKEN_LABEL` — select token by label
 
 Example:
 
 ```bash
 export GLASSBOX_PKCS11_MODULE=/usr/lib/softhsm/libsofthsm2.so
 export GLASSBOX_PKCS11_PIN=1234
-export GLASSBOX_PKCS11_KEY_LABEL=Glassbox-audit-ed25519
-export GLASSBOX_PKCS11_PUBLIC_KEY_PEM="$(cat ./ed25519-public-key-spki.pem)"
+export GLASSBOX_PKCS11_KEY_LABEL=glassbox-audit-key
 
-node dist/index.js audit:sign \
+glassbox audit:sign \
   --hsm-provider pkcs11 \
   --payload '{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}'
 ```
 
+#### Validating PKCS#11 configuration
+
+Run a preflight check before signing to surface configuration errors with actionable remediation hints:
+
+```bash
+glassbox audit:sign --hsm-provider pkcs11 --validate-only
+```
+
+This checks module loading, slot enumeration, PIN authentication, key lookup, and a test signing operation — without touching any payload.
+
 The command prints the signed audit log JSON to stdout so it can be redirected to a file.
 
-For YubiKey PIV (YKCS11) usage details, see [docs/pkcs11-yubikey.md](docs/pkcs11-yubikey.md).
+For platform-specific module paths, YubiKey setup, and troubleshooting, see [docs/audit-signing.md](docs/audit-signing.md).
 
 ### Protocol Handler
 
