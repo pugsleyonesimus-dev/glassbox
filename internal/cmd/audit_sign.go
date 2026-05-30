@@ -101,6 +101,9 @@ EXAMPLES
     --pkcs11-module /usr/lib/softhsm/libsofthsm2.so \
     --pkcs11-pin 1234`,
 	Args: cobra.NoArgs,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return validateAuditSignArgs(auditSignPayload, auditSignPayloadFile, auditSignProvider)
+	},
 	RunE: runAuditSign,
 }
 

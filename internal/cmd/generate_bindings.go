@@ -48,6 +48,9 @@ Examples:
   glassbox generate-bindings --output ./src/bindings --package my-contract contract.wasm
   glassbox generate-bindings --debug-metadata --wasm-source ./contract.wasm contract.wasm`,
 	Args: cobra.ExactArgs(1),
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return validateGenerateBindingsArgs(bindingsNetwork, args[0], bindingsOutput)
+	},
 	RunE: runGenerateBindings,
 }
 

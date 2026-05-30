@@ -12,6 +12,16 @@ import (
 	"github.com/dotandev/glassbox/internal/errors"
 )
 
+// activeConfigFile records which config file was loaded during the last call
+// to loadFromFile. It is reset on each call.
+var activeConfigFile string
+
+// ActiveConfigFile returns the path of the config file that was loaded during
+// the most recent Load() call, or an empty string if no file was found.
+func ActiveConfigFile() string {
+	return activeConfigFile
+}
+
 func loadFromEnv(cfg *Config) error { //nolint:unused // Reserved for future config loading from environment
 	if v := os.Getenv("GLASSBOX_RPC_URL"); v != "" {
 		cfg.RpcUrl = v
@@ -88,15 +98,29 @@ func splitAndTrim(s string) []string {
 	return parts
 }
 
+// loadFromFile searches for a config file in the following order and loads the
+// first one found. Precedence (highest first):
+//  1. .glassbox.toml          (current directory, XDG-style)
+//  2. .Glassbox.toml          (current directory, legacy)
+//  3. ~/.glassbox/config.toml (home directory, XDG-style)
+//  4. ~/.Glassbox.toml        (home directory, legacy)
+//  5. /etc/Glassbox/config.toml (system-wide)
 func (c *Config) loadFromFile() error {
+	activeConfigFile = "" // reset on each load
+
+	home := os.ExpandEnv("$HOME")
+
 	paths := []string{
+		".glassbox.toml",
 		".Glassbox.toml",
-		filepath.Join(os.ExpandEnv("$HOME"), ".Glassbox.toml"),
+		filepath.Join(home, ".glassbox", "config.toml"),
+		filepath.Join(home, ".Glassbox.toml"),
 		"/etc/Glassbox/config.toml",
 	}
 
 	for _, path := range paths {
 		if err := c.loadTOML(path); err == nil {
+			activeConfigFile = path
 			return nil
 		}
 	}

@@ -367,12 +367,25 @@ func validateContractID(id string) error {
 }
 
 // parseGitHubURL extracts owner and repo from a GitHub URL.
-// Supports formats like:
+// Supports formats:
 //   - https://github.com/owner/repo
 //   - https://github.com/owner/repo.git
 //   - github.com/owner/repo
+//   - git@github.com:owner/repo.git  (SSH remote)
 func parseGitHubURL(rawURL string) (string, string, error) {
 	s := rawURL
+
+	// Handle SSH remote format: git@github.com:owner/repo.git
+	if strings.HasPrefix(s, "git@github.com:") {
+		s = strings.TrimPrefix(s, "git@github.com:")
+		s = strings.TrimSuffix(s, ".git")
+		parts := strings.SplitN(s, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("cannot extract owner/repo from SSH remote %q", rawURL)
+		}
+		return parts[0], parts[1], nil
+	}
+
 	s = strings.TrimPrefix(s, "https://")
 	s = strings.TrimPrefix(s, "http://")
 	s = strings.TrimPrefix(s, "github.com/")
@@ -389,15 +402,12 @@ func parseGitHubURL(rawURL string) (string, string, error) {
 
 // isSourceFile returns true if the file path is a Soroban-relevant source file.
 func isSourceFile(path string) bool {
-	// Rust source files
 	if strings.HasSuffix(path, ".rs") {
 		return true
 	}
-	// Cargo manifest
 	if strings.HasSuffix(path, "Cargo.toml") {
 		return true
 	}
-	// Cargo lock (useful for reproducible builds)
 	if strings.HasSuffix(path, "Cargo.lock") {
 		return true
 	}

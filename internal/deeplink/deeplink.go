@@ -31,18 +31,24 @@ const (
 type Result struct {
 	// Registered reports whether the glassbox:// scheme is registered with the OS.
 	Registered bool
+	// PartialSuccess is true when the scheme is registered but the handler is
+	// stale, malformed, or points to a different binary. Callers should treat
+	// this as a degraded state requiring repair rather than a clean failure.
+	PartialSuccess bool
 	// Dispatched reports whether a mock link was successfully dispatched.
 	Dispatched bool
 	// Handler is the binary path the OS has associated with the scheme.
 	Handler string
-	// Err holds the first error encountered, if any.
+	// Err holds the first error encountered, if any. When PartialSuccess is
+	// true, Err describes the specific mismatch (e.g. stale path, missing
+	// URL Protocol value, unsupported desktop environment).
 	Err error
 	// FixSteps contains ordered troubleshooting instructions.
 	FixSteps []string
 }
 
 // Check performs a two-phase verification:
-//  1. Inspect OS registration to confirm the scheme points to an Glassbox binary.
+//  1. Inspect OS registration to confirm the scheme points to a Glassbox binary.
 //  2. Trigger MockURL and verify the process exits cleanly within probeTimeout.
 //
 // The probe is intentionally non-interactive: the binary must handle
@@ -61,6 +67,13 @@ func Check(selfPath string) Result {
 	selfPath, _ = filepath.Abs(selfPath)
 
 	res := checkRegistration(selfPath)
+
+	// Propagate partial-success flag when the registration exists but is broken.
+	if res.Registered && res.Err != nil {
+		res.PartialSuccess = true
+		return res
+	}
+
 	if !res.Registered {
 		return res
 	}
@@ -69,7 +82,7 @@ func Check(selfPath string) Result {
 	if !res.Dispatched {
 		res.FixSteps = append(res.FixSteps,
 			"The scheme is registered but the OS failed to dispatch the mock link.",
-			"Try re-running 'Glassbox install-scheme' or reinstalling Glassbox.",
+			"Try re-running 'glassbox install-scheme' or reinstalling Glassbox.",
 		)
 	}
 	return res
@@ -80,21 +93,21 @@ func genericFixSteps() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
-			"Register the scheme: Glassbox install-scheme",
+			"Register the scheme: glassbox install-scheme",
 			"Or manually add Glassbox to /Applications and run: /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/Glassbox.app",
 			"Verify with: open glassbox://doctor-probe",
 		}
 	case "windows":
 		return []string{
-			"Register the scheme: Glassbox install-scheme  (requires Administrator)",
+			"Register the scheme: glassbox install-scheme  (requires Administrator)",
 			"Or manually add the registry key: HKEY_CLASSES_ROOT\\Glassbox",
 			"Verify with: start glassbox://doctor-probe",
 		}
 	default: // Linux / BSD
 		return []string{
-			"Register the scheme: Glassbox install-scheme",
-			"Or create ~/.local/share/applications/Glassbox.desktop with MimeType=x-scheme-handler/Glassbox",
-			"Then run: xdg-mime default Glassbox.desktop x-scheme-handler/Glassbox",
+			"Register the scheme: glassbox install-scheme",
+			"Or create ~/.local/share/applications/glassbox.desktop with MimeType=x-scheme-handler/glassbox",
+			"Then run: xdg-mime default glassbox.desktop x-scheme-handler/glassbox",
 			"Verify with: xdg-open glassbox://doctor-probe",
 		}
 	}
