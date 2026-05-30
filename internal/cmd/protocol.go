@@ -111,6 +111,21 @@ var protocolHandlerCmd = &cobra.Command{
 		}
 
 		debugArgs := []string{"debug", parsed.TransactionHash, "--network", parsed.Network}
+
+		// Forward the operation index when present (prefer Op, fall back to Operation).
+		opIdx := parsed.Op
+		if opIdx == nil {
+			opIdx = parsed.Operation
+		}
+		if opIdx != nil {
+			debugArgs = append(debugArgs, "--op", fmt.Sprintf("%d", *opIdx))
+		}
+
+		// Forward the view mode when present.
+		if parsed.View != "" {
+			debugArgs = append(debugArgs, "--view", parsed.View)
+		}
+
 		child := exec.CommandContext(cmd.Context(), executablePath, debugArgs...)
 		child.Stdout = cmd.OutOrStdout()
 		child.Stderr = cmd.ErrOrStderr()

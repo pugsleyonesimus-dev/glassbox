@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/dotandev/glassbox/internal/deeplink"
 	"github.com/dotandev/glassbox/internal/localization"
+	"github.com/dotandev/glassbox/internal/protocolreg"
 	"github.com/dotandev/glassbox/internal/shutdown"
 	"github.com/dotandev/glassbox/internal/updater"
 	"github.com/dotandev/glassbox/internal/version"
@@ -161,25 +163,68 @@ func checkForUpdatesAsync() {
 	}()
 }
 
-// handleDeepLinkProbe processes an glassbox:// URL dispatched by the OS or by the
-// doctor probe.  For the well-known probe URL it exits 0 immediately so the
-// doctor check can confirm the binary is reachable.
+// handleDeepLinkProbe processes a glassbox:// URL dispatched by the OS or by the
+// doctor probe.
+//
+// Recognised paths:
+//   - "doctor-probe"          — exits 0 immediately (used by the doctor check)
+//   - "debug/<txhash>?..."    — delegates to the protocol:handle dispatcher which
+//     re-invokes the binary with the full "debug" sub-command and validated flags
 func handleDeepLinkProbe(rawURL string) error {
 	if !strings.HasPrefix(rawURL, deeplink.Scheme+"://") {
 		return fmt.Errorf("unrecognised deep link scheme: %s", rawURL)
 	}
 
-	path := strings.TrimPrefix(rawURL, deeplink.Scheme+"://")
+	// Strip the scheme prefix to get the host+path portion for simple matching.
+	rest := strings.TrimPrefix(rawURL, deeplink.Scheme+"://")
 
-	switch path {
-	case "doctor-probe":
+	switch {
+	case rest == "doctor-probe":
 		// Intentional no-op: the doctor check just needs exit code 0.
 		os.Exit(0)
+
+	case strings.HasPrefix(rest, "debug/") || rest == "debug":
+		// Delegate to the protocol handler which validates the URI and re-invokes
+		// the binary with the correct "debug" sub-command arguments.
+		return dispatchDebugDeepLink(rawURL)
+
 	default:
-		return fmt.Errorf("unhandled deep link path: %s", path)
+		return fmt.Errorf("unhandled deep link path %q: supported paths are debug/<txhash> and doctor-probe", rest)
 	}
 
 	return nil
+}
+
+// dispatchDebugDeepLink validates a glassbox://debug/... URI and re-invokes the
+// current binary as "glassbox debug <hash> --network <n> [--op <i>] [--view <v>]".
+// This keeps the deep-link handler thin and reuses all validation in ParseDebugURI.
+func dispatchDebugDeepLink(rawURL string) error {
+	// Import is done via the protocolreg package already used in protocol.go.
+	// We call the same ParseDebugURI used by protocol:handle so validation is
+	// identical regardless of how the URI arrives (OS dispatch vs CLI flag).
+	parsed, err := protocolreg.ParseDebugURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid deep link: %w", err)
+	}
+
+	executablePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable path: %w", err)
+	}
+
+	debugArgs := []string{"debug", parsed.TransactionHash, "--network", parsed.Network}
+
+	if parsed.Op != nil {
+		debugArgs = append(debugArgs, "--op", fmt.Sprintf("%d", *parsed.Op))
+	}
+	if parsed.View != "" {
+		debugArgs = append(debugArgs, "--view", parsed.View)
+	}
+
+	child := exec.CommandContext(context.Background(), executablePath, debugArgs...)
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	return child.Run()
 }
 
 func init() {
