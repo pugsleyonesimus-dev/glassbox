@@ -4,7 +4,6 @@
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/dotandev/glassbox/internal/config"

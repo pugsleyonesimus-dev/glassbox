@@ -4,12 +4,11 @@
 package cmd
 
 import (
-    "context"
-    "fmt"
-    "os"
+	"fmt"
+	"os"
 
-    "github.com/dotandev/glassbox/internal/config"
-    "github.com/spf13/cobra"
+	"github.com/dotandev/glassbox/internal/config"
+	"github.com/spf13/cobra"
 )
 
 var telemetryCmd = &cobra.Command{

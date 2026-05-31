@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/dotandev/glassbox/internal/decoder"
 	"github.com/dotandev/glassbox/internal/errors"
@@ -15,12 +16,14 @@ import (
 )
 
 var (
-	traceFile      string
-	traceThemeFlag string
-	tracePrint     bool
-	traceNoColor   bool
-	traceExportSVG string
-	traceOutputJSON string
+	traceFile        string
+	traceThemeFlag   string
+	tracePrint       bool
+	traceNoColor     bool
+	traceExportSVG   string
+	traceOutputJSON  string
+	traceExportPath   string
+	traceExportFormat string
 )
 
 var traceCmd = &cobra.Command{

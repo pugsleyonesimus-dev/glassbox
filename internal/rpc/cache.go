@@ -337,3 +337,18 @@ func Flush(ctx context.Context) error {
 	_ = ctx
 	return nil
 }
+
+// CountEntries returns the total number of entries currently stored in the
+// RPC response cache database.
+func CountEntries() (int, error) {
+	db, err := ensureDB()
+	if err != nil {
+		return 0, fmt.Errorf("failed to open cache DB: %w", err)
+	}
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM rpc_cache").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count cache entries: %w", err)
+	}
+	return count, nil
+}

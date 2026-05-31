@@ -302,6 +302,79 @@ Use 'Glassbox session list' to see available sessions.`,
 	},
 }
 
+var sessionRecoverCmd = &cobra.Command{
+	Use:   "recover",
+	Short: "Restore a session interrupted by an unexpected process termination",
+	Long: `Check for an orphaned session checkpoint left by a previous Glassbox process
+that terminated unexpectedly (crash, SIGKILL, power loss).
+
+If a recoverable checkpoint is found, the session is restored and made active so
+that 'session save' or 'session resume' can pick up where the interrupted run
+left off. The checkpoint is removed after a successful recovery.`,
+	Example: `  # Check for and restore an orphaned session
+  glassbox session recover`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+
+		cp, err := session.LoadCheckpoint()
+		if err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to read checkpoint: %v", err))
+		}
+		if cp == nil {
+			fmt.Println("No crash-recovery checkpoint found. Nothing to recover.")
+			return nil
+		}
+
+		if !cp.IsOrphaned() {
+			fmt.Printf("Checkpoint found but the owning process (PID %d) is still running.\n", cp.PID)
+			fmt.Println("Use 'glassbox session list' to view active sessions.")
+			return nil
+		}
+
+		fmt.Printf("Orphaned session checkpoint detected (PID %d no longer running).\n", cp.PID)
+		fmt.Printf("  Session : %s\n", cp.SessionID)
+		fmt.Printf("  Tx Hash : %s\n", cp.TxHash)
+		fmt.Printf("  Network : %s\n", cp.Network)
+		fmt.Printf("  Started : %s\n", cp.StartedAt.Format(time.RFC3339))
+		fmt.Println()
+
+		// Attempt to load the session from the store.
+		store, err := session.NewStore()
+		if err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to open session store: %v", err))
+		}
+		defer store.Close()
+
+		data, loadErr := store.Load(ctx, cp.SessionID)
+		if loadErr != nil {
+			// Checkpoint exists but session was never flushed to the store.
+			fmt.Printf("Warning: session %s not found in store (%v).\n", cp.SessionID, loadErr)
+			fmt.Println("Clearing stale checkpoint.")
+			_ = session.ClearCheckpoint()
+			return nil
+		}
+
+		data.Status = "recovered"
+		data.LastAccessAt = time.Now()
+		if err := store.Save(ctx, data); err != nil {
+			return errors.WrapValidationError(fmt.Sprintf("failed to update recovered session: %v", err))
+		}
+
+		SetCurrentSession(data)
+
+		// Remove the checkpoint now that the session is safely restored.
+		if err := session.ClearCheckpoint(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clear checkpoint: %v\n", err)
+		}
+
+		fmt.Printf("Session recovered: %s\n", data.ID)
+		fmt.Println("Use 'glassbox session resume <id>' to re-enter the session,")
+		fmt.Println("or 'glassbox session list' to view all sessions.")
+		return nil
+	},
+}
+
 func init() {
 	sessionSaveCmd.Flags().StringVar(&sessionIDFlag, "id", "", "Custom session ID (default: auto-generated)")
 
@@ -309,6 +382,7 @@ func init() {
 	sessionCmd.AddCommand(sessionResumeCmd)
 	sessionCmd.AddCommand(sessionListCmd)
 	sessionCmd.AddCommand(sessionDeleteCmd)
+	sessionCmd.AddCommand(sessionRecoverCmd)
 
 	rootCmd.AddCommand(sessionCmd)
 }

@@ -46,7 +46,6 @@ var (
 	auditSignPKCS11TokenLabel string
 	auditSignPKCS11KeyLabel   string
 	auditSignPKCS11KeyIDHex   string
-	auditSignValidateOnly      bool
 )
 
 // SignedAuditLog is the JSON output produced by audit:sign.

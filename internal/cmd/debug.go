@@ -38,9 +38,8 @@ import (
 	"github.com/dotandev/glassbox/internal/watch"
 
 	"github.com/spf13/cobra"
-    "strconv"
+	"strconv"
 	"github.com/stellar/go-stellar-sdk/xdr"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 var (

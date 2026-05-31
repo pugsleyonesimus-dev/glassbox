@@ -27,7 +27,6 @@ import (
 
 	"github.com/dotandev/glassbox/internal/logger"
 	"github.com/dotandev/glassbox/internal/telemetry"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // Transaction status values as returned by Soroban RPC getTransaction.
