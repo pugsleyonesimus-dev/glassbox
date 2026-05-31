@@ -37,10 +37,18 @@ This command:
   1) Loads a base64-encoded TransactionEnvelope XDR from a local file
   2) Fetches required ledger entries from the configured Soroban RPC
   3) Replays the transaction locally via the Rust simulator
-  4) Prints an estimated required fee based on the observed resource usage
+  4) Prints an estimated required fee based on the observed resource usage`,
+	Example: `  # Dry-run a transaction envelope against testnet
+  glassbox dry-run ./tx.xdr --network testnet
 
-Example:
-  Glassbox dry-run ./tx.xdr --network testnet`,
+  # Dry-run against mainnet with a custom RPC endpoint
+  glassbox dry-run ./tx.xdr --network mainnet --rpc-url https://my-rpc.example.com
+
+  # Use an RPC authentication token
+  glassbox dry-run ./tx.xdr --rpc-token $MY_TOKEN
+
+  # Pipe the transaction XDR from another tool
+  stellar tx build ... | glassbox dry-run /dev/stdin --network testnet`,
 	Args: cobra.ExactArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		return validateNetworkName(dryRunNetworkFlag)

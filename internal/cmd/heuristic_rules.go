@@ -21,13 +21,21 @@ var heuristicCmd = &cobra.Command{
 	Long: `Commands for working with the heuristic rule engine.
 
 Rules can be loaded from JSON or YAML files, allowing new error patterns to be
-added without recompiling the binary.
-
-Examples:
+added without recompiling the binary.`,
+	Example: `  # List built-in heuristic rules
   glassbox heuristic list
+
+  # List rules from a custom rule file
   glassbox heuristic list --rules ./my-rules.json
+
+  # Validate a custom rule file
   glassbox heuristic validate ./my-rules.json
-  glassbox heuristic test --error "Error(Auth, NotAuthorized)"`,
+
+  # Test a rule against a sample error string
+  glassbox heuristic test --error "Error(Auth, NotAuthorized)"
+
+  # List rules from a directory and flag conflicts
+  glassbox heuristic list --rules-dir ./rules/ --conflicts`,
 }
 
 // ─── heuristic list ───────────────────────────────────────────────────────────
