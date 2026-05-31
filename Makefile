@@ -1,6 +1,6 @@
 .PHONY: build test lint lint-strict lint-unused test-unused validate-ci validate-interface clean
 .PHONY: rust-lint rust-lint-strict rust-test rust-build lint-all-strict
-.PHONY: build test lint validate-errors clean bench bench-rpc bench-sim bench-profile bench-perf-regression
+.PHONY: build test lint validate-errors clean bench bench-rpc bench-sim bench-replay bench-sourcemap bench-profile bench-perf-regression
 .PHONY: fmt fmt-go fmt-rust pre-commit
 .PHONY: release release-linux release-darwin release-windows package verify-release ts-build
 
@@ -133,9 +133,9 @@ deps:
 	go mod tidy
 	go mod download
 
-# Run benchmarks
+# Run all benchmarks (RPC, replay, sourcemap, simulator)
 bench:
-	go test -bench=. -benchmem ./internal/rpc ./internal/simulator
+	go test -bench=. -benchmem ./internal/rpc ./internal/replay ./internal/sourcemap ./internal/simulator
 
 # Run RPC benchmarks only
 bench-rpc:
@@ -145,9 +145,17 @@ bench-rpc:
 bench-sim:
 	go test -bench=. -benchmem ./internal/simulator
 
+# Run replay benchmarks only
+bench-replay:
+	go test -bench=. -benchmem ./internal/replay
+
+# Run sourcemap benchmarks only
+bench-sourcemap:
+	go test -bench=. -benchmem ./internal/sourcemap
+
 # Run benchmarks with CPU profiling
 bench-profile:
-	go test -bench=. -benchmem -cpuprofile=cpu.prof ./internal/rpc ./internal/simulator
+	go test -bench=. -benchmem -cpuprofile=cpu.prof ./internal/rpc ./internal/replay ./internal/sourcemap ./internal/simulator
 
 # Run performance regression tests for simulator
 bench-perf-regression:
