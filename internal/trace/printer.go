@@ -215,6 +215,16 @@ func PrintExecutionTrace(t *ExecutionTrace, opts PrintOptions) {
 				}
 			}
 		}
+		if state.Cost != nil {
+			_, _ = fmt.Fprintf(out, "%s  %s %s\n",
+				continuation,
+				p.budgetLabel.Sprint("Cost:"),
+				p.budgetVal.Sprint(FormatCostAnnotation(state.Cost)),
+			)
+			for _, line := range FormatCostBreakdown(state.Cost) {
+				_, _ = fmt.Fprintf(out, "%s    %s\n", continuation, p.dimmed.Sprint(line))
+			}
+		}
 
 		// ── detect final status from host_state ───────────────────────────────
 		if state.HostState != nil {
@@ -360,6 +370,16 @@ func printTreeNode(out io.Writer, p palette, node *TraceNode, prefix string, isL
 			budget.WriteString(p.budgetVal.Sprint(formatBytes(*node.MemoryDelta)))
 		}
 		_, _ = fmt.Fprintln(out, budget.String())
+	}
+	if node.Cost != nil {
+		_, _ = fmt.Fprintf(out, "%s  %s %s\n",
+			childPrefix,
+			p.budgetLabel.Sprint("Cost:"),
+			p.budgetVal.Sprint(FormatCostAnnotation(node.Cost)),
+		)
+		for _, line := range FormatCostBreakdown(node.Cost) {
+			_, _ = fmt.Fprintf(out, "%s    %s\n", childPrefix, p.dimmed.Sprint(line))
+		}
 	}
 
 	// ── children ──────────────────────────────────────────────────────────────

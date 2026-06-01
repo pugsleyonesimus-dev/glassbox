@@ -16,6 +16,7 @@ import (
 
 var (
 	sessionIDFlag string
+	sessionNameFlag string
 )
 
 // currentData holds the active session context from debug command
@@ -58,6 +59,10 @@ Available subcommands:
   # Resume a specific session
   Glassbox session resume <session-id>
 
+  # Save and load a named bookmark
+  Glassbox session save --name payroll-bug
+  Glassbox session load payroll-bug
+
   # Delete a session
   Glassbox session delete <session-id>`,
 }
@@ -73,7 +78,10 @@ The session ID can be auto-generated or specified with --id flag.`,
   Glassbox session save
 
   # Save with custom ID
-  Glassbox session save --id my-debug-session`,
+  Glassbox session save --id my-debug-session
+
+  # Save a named bookmark
+  Glassbox session save --name payroll-bug`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -89,6 +97,9 @@ The session ID can be auto-generated or specified with --id flag.`,
 			data.ID = sessionIDFlag
 		} else if data.ID == "" {
 			data.ID = session.GenerateID(data.TxHash)
+		}
+		if sessionNameFlag != "" {
+			data.Name = strings.TrimSpace(sessionNameFlag)
 		}
 
 		data.Status = "saved"
@@ -114,6 +125,9 @@ The session ID can be auto-generated or specified with --id flag.`,
 		}
 
 		fmt.Printf("Session saved: %s\n", data.ID)
+		if data.Name != "" {
+			fmt.Printf("  Name: %s\n", data.Name)
+		}
 		fmt.Printf("  Transaction: %s\n", data.TxHash)
 		fmt.Printf("  Network: %s\n", data.Network)
 		fmt.Printf("  Created: %s\n", data.CreatedAt.Format(time.RFC3339))
@@ -123,18 +137,22 @@ The session ID can be auto-generated or specified with --id flag.`,
 }
 
 var sessionResumeCmd = &cobra.Command{
-	Use:   "resume <session-id>",
+	Use:   "resume <session-id-or-name>",
+	Aliases: []string{"load"},
 	Short: "Restore a saved debugging session",
 	Long: `Resume a previously saved debug session by ID. This restores all transaction data,
 simulation results, and analysis context from the saved session.
 
-Use 'Glassbox session list' to see available sessions.`,
+Use 'Glassbox session list' to see available session IDs and names.`,
 	Example: `  # Resume a session
   Glassbox session resume abc123
 
+  # Load by bookmark name
+  Glassbox session load payroll-bug
+
   # List available sessions first
   Glassbox session list
-  Glassbox session resume <session-id>`,
+  Glassbox session resume <session-id-or-name>`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -170,6 +188,9 @@ Use 'Glassbox session list' to see available sessions.`,
 
 		// Display session info
 		fmt.Printf("Session resumed: %s\n", data.ID)
+		if data.Name != "" {
+			fmt.Printf("  Name: %s\n", data.Name)
+		}
 		fmt.Printf("  Transaction: %s\n", data.TxHash)
 		fmt.Printf("  Network: %s\n", data.Network)
 		fmt.Printf("  Created: %s\n", data.CreatedAt.Format(time.RFC3339))
@@ -251,7 +272,7 @@ Displays session ID, network, last access time, and transaction hash.`,
 		}
 
 		fmt.Printf("Saved sessions (%d):\n\n", len(sessions))
-		fmt.Printf("%-20s %-12s %-20s %-66s\n", "ID", "Network", "Last Accessed", "Transaction Hash")
+		fmt.Printf("%-20s %-20s %-12s %-20s %-66s\n", "ID", "Name", "Network", "Last Accessed", "Transaction Hash")
 		fmt.Println("--------------------------------------------------------------------------------")
 
 		for _, s := range sessions {
@@ -260,7 +281,11 @@ Displays session ID, network, last access time, and transaction hash.`,
 			if len(txHash) > 64 {
 				txHash = txHash[:64] + "..."
 			}
-			fmt.Printf("%-20s %-12s %-20s %-66s\n", s.ID, s.Network, lastAccess, txHash)
+			name := s.Name
+			if name == "" {
+				name = "-"
+			}
+			fmt.Printf("%-20s %-20s %-12s %-20s %-66s\n", s.ID, name, s.Network, lastAccess, txHash)
 		}
 
 		return nil
@@ -377,6 +402,7 @@ left off. The checkpoint is removed after a successful recovery.`,
 
 func init() {
 	sessionSaveCmd.Flags().StringVar(&sessionIDFlag, "id", "", "Custom session ID (default: auto-generated)")
+	sessionSaveCmd.Flags().StringVar(&sessionNameFlag, "name", "", "Bookmark name for this session snapshot")
 
 	sessionCmd.AddCommand(sessionSaveCmd)
 	sessionCmd.AddCommand(sessionResumeCmd)

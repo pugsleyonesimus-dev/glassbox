@@ -96,6 +96,12 @@ func FormatTrace(t *ExecutionTrace, opts FormatOptions) string {
 		if s.Error != "" {
 			writeMetaLine(&b, cont, "error", s.Error, textWidth)
 		}
+		if s.Cost != nil {
+			writeMetaLine(&b, cont, "cost", FormatCostAnnotation(s.Cost), textWidth)
+			for _, line := range FormatCostBreakdown(s.Cost) {
+				writeMetaLine(&b, cont, "cost breakdown", line, textWidth)
+			}
+		}
 		if s.GitHubLink != "" {
 			writeMetaLine(&b, cont, "link", s.GitHubLink, textWidth)
 		}
@@ -151,6 +157,12 @@ func renderNode(b *strings.Builder, n *TraceNode, depth, lw, iw int, isLast bool
 			loc = fmt.Sprintf("%s:%d:%d", n.SourceRef.File, n.SourceRef.Line, n.SourceRef.Column)
 		}
 		writeMetaLine(b, cont, "source", loc, textWidth)
+	}
+	if n.Cost != nil {
+		writeMetaLine(b, cont, "cost", FormatCostAnnotation(n.Cost), textWidth)
+		for _, line := range FormatCostBreakdown(n.Cost) {
+			writeMetaLine(b, cont, "cost breakdown", line, textWidth)
+		}
 	}
 
 	if n.ContractMetadata != nil && n.ContractMetadata.HasMetadata() {

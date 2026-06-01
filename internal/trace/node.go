@@ -24,6 +24,7 @@ type TraceNode struct {
 	SourceRef        *SourceRef           // Optional source mapping from WASM debug info; nil if unknown
 	CPUDelta         *uint64              // CPU instructions consumed by this node (nil if not tracked)
 	MemoryDelta      *uint64              // Memory bytes consumed by this node (nil if not tracked)
+	Cost             *CostAnnotation       // Cost or budget annotation for this node
 	ContractMetadata *abi.ContractMetadata // Contract metadata for contract call nodes
 }
 

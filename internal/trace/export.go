@@ -29,6 +29,8 @@ type exportState struct {
 	SourceFile        string
 	SourceLine        int
 	GitHubLink        string
+	CostSummary       string
+	CostBreakdown     []string
 	Details           []string
 }
 
@@ -37,7 +39,13 @@ type exportData struct {
 	StartTime       string
 	EndTime         string
 	TotalSteps      int
+	Annotations     TraceAnnotations
 	States          []exportState
+}
+
+type ExportOptions struct {
+	Comments        []string
+	SessionMetadata map[string]string
 }
 
 const traceHTMLTemplate = `<!doctype html>
@@ -68,6 +76,12 @@ const traceHTMLTemplate = `<!doctype html>
     <h1>Glassbox Trace Export</h1>
     <p>Transaction: {{ .TransactionHash }}</p>
     <p>Steps: {{ .TotalSteps }} · Started: {{ .StartTime }} · Ended: {{ .EndTime }}</p>
+    {{ if .Annotations.Comments }}
+    <div class="field"><strong>Comments:</strong><ul>{{ range .Annotations.Comments }}<li>{{ . }}</li>{{ end }}</ul></div>
+    {{ end }}
+    {{ if .Annotations.SessionMetadata }}
+    <div class="field"><strong>Session metadata:</strong><ul>{{ range $k, $v := .Annotations.SessionMetadata }}<li><code>{{ $k }}</code>: {{ $v }}</li>{{ end }}</ul></div>
+    {{ end }}
     <div class="controls">
       <button onclick="setAll(true)">Expand all</button>
       <button onclick="setAll(false)">Collapse all</button>
@@ -87,6 +101,14 @@ const traceHTMLTemplate = `<!doctype html>
     <div class="field"><strong>Arguments:</strong> <code>{{ .Args }}</code></div>
     {{ if .Return }}<div class="field"><strong>Return:</strong> <code>{{ .Return }}</code></div>{{ end }}
     {{ if .Error }}<div class="field"><strong>Error:</strong> <code>{{ .Error }}</code></div>{{ end }}
+    {{ if .CostSummary }}<div class="field"><strong>Cost:</strong> <code>{{ .CostSummary }}</code></div>{{ end }}
+    {{ if .CostBreakdown }}
+    <div class="field"><strong>Cost breakdown:</strong>
+      <ul>
+      {{ range .CostBreakdown }}<li>{{ . }}</li>{{ end }}
+      </ul>
+    </div>
+    {{ end }}
     {{ if .Details }}
     <div class="field"><strong>Details:</strong>
       <ul>
@@ -114,6 +136,13 @@ const traceMarkdownTemplate = `# Glassbox Trace Export
 
 **Ended:** {{ .EndTime }}
 
+{{ if .Annotations.Comments }}## Comments
+{{ range .Annotations.Comments }}- {{ . }}
+{{ end }}
+{{ end }}{{ if .Annotations.SessionMetadata }}## Session Metadata
+{{ range $k, $v := .Annotations.SessionMetadata }}- **{{ $k }}:** {{ $v }}
+{{ end }}
+{{ end }}
 {{ range .States }}
 ## Step {{ .Step }}: {{ .Summary }}
 
@@ -126,6 +155,11 @@ const traceMarkdownTemplate = `# Glassbox Trace Export
 {{ end }}- **Arguments:** {{ .Args }}
 {{ if .Return }}- **Return:** {{ .Return }}
 {{ end }}{{ if .Error }}- **Error:** {{ .Error }}
+{{ end }}{{ if .CostSummary }}- **Cost:** {{ .CostSummary }}
+{{ end }}{{ if .CostBreakdown }}- **Cost breakdown:**
+  {{ range .CostBreakdown }}
+  - {{ . }}
+  {{ end }}
 {{ end }}{{ if .Details }}- **Details:**
   {{ range .Details }}
   - {{ . }}
@@ -135,6 +169,10 @@ const traceMarkdownTemplate = `# Glassbox Trace Export
 {{ end }}`
 
 func ExportExecutionTrace(trace *ExecutionTrace, format string, outputPath string) error {
+	return ExportExecutionTraceWithOptions(trace, format, outputPath, ExportOptions{})
+}
+
+func ExportExecutionTraceWithOptions(trace *ExecutionTrace, format string, outputPath string, opts ExportOptions) error {
 	if trace == nil {
 		return fmt.Errorf("trace is nil")
 	}
@@ -147,9 +185,9 @@ func ExportExecutionTrace(trace *ExecutionTrace, format string, outputPath strin
 	var err error
 	switch format {
 	case "html":
-		content, err = GenerateTraceHTML(trace)
+		content, err = GenerateTraceHTMLWithOptions(trace, opts)
 	case "markdown", "md":
-		content, err = GenerateTraceMarkdown(trace)
+		content, err = GenerateTraceMarkdownWithOptions(trace, opts)
 	default:
 		return fmt.Errorf("unsupported trace export format: %s", format)
 	}
@@ -164,15 +202,21 @@ func ExportExecutionTrace(trace *ExecutionTrace, format string, outputPath strin
 }
 
 func GenerateTraceHTML(trace *ExecutionTrace) (string, error) {
+	return GenerateTraceHTMLWithOptions(trace, ExportOptions{})
+}
+
+func GenerateTraceHTMLWithOptions(trace *ExecutionTrace, opts ExportOptions) (string, error) {
 	if trace == nil {
 		return "", fmt.Errorf("trace is nil")
 	}
+	annotations := mergeTraceAnnotations(trace.Annotations, opts)
 
 	data := exportData{
 		TransactionHash: trace.TransactionHash,
 		StartTime:       trace.StartTime.Format(time.RFC3339),
 		EndTime:         trace.EndTime.Format(time.RFC3339),
 		TotalSteps:      len(trace.States),
+		Annotations:     annotations,
 		States:          buildExportStates(trace),
 	}
 
@@ -189,15 +233,21 @@ func GenerateTraceHTML(trace *ExecutionTrace) (string, error) {
 }
 
 func GenerateTraceMarkdown(trace *ExecutionTrace) (string, error) {
+	return GenerateTraceMarkdownWithOptions(trace, ExportOptions{})
+}
+
+func GenerateTraceMarkdownWithOptions(trace *ExecutionTrace, opts ExportOptions) (string, error) {
 	if trace == nil {
 		return "", fmt.Errorf("trace is nil")
 	}
+	annotations := mergeTraceAnnotations(trace.Annotations, opts)
 
 	data := exportData{
 		TransactionHash: trace.TransactionHash,
 		StartTime:       trace.StartTime.Format(time.RFC3339),
 		EndTime:         trace.EndTime.Format(time.RFC3339),
 		TotalSteps:      len(trace.States),
+		Annotations:     annotations,
 		States:          buildExportStates(trace),
 	}
 
@@ -244,6 +294,9 @@ func buildExportStates(trace *ExecutionTrace) []exportState {
 		if s.Memory != nil {
 			details = append(details, fmt.Sprintf("memory entries: %d", len(s.Memory)))
 		}
+		if s.Cost != nil {
+			details = append(details, fmt.Sprintf("cost: %s", FormatCostAnnotation(s.Cost)))
+		}
 
 		summary := s.Operation
 		if summary == "" {
@@ -270,9 +323,32 @@ func buildExportStates(trace *ExecutionTrace) []exportState {
 			SourceFile:        s.SourceFile,
 			SourceLine:        s.SourceLine,
 			GitHubLink:        s.GitHubLink,
+			CostSummary:       FormatCostAnnotation(s.Cost),
+			CostBreakdown:     FormatCostBreakdown(s.Cost),
 			Details:           details,
 		})
 	}
 	return states
+}
+
+func mergeTraceAnnotations(base TraceAnnotations, opts ExportOptions) TraceAnnotations {
+	out := base
+	if len(opts.Comments) > 0 {
+		out.Comments = append(append([]string(nil), base.Comments...), opts.Comments...)
+	}
+	if len(opts.SessionMetadata) > 0 {
+		merged := make(map[string]string, len(base.SessionMetadata)+len(opts.SessionMetadata))
+		for k, v := range base.SessionMetadata {
+			merged[k] = v
+		}
+		for k, v := range opts.SessionMetadata {
+			merged[k] = v
+		}
+		out.SessionMetadata = merged
+	}
+	if out.GeneratedAt.IsZero() && (len(out.Comments) > 0 || len(out.SessionMetadata) > 0) {
+		out.GeneratedAt = time.Now()
+	}
+	return out
 }
  

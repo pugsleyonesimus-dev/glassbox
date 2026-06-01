@@ -31,6 +31,7 @@ const (
 // Data represents the complete state of a debug session
 type Data struct {
 	ID            string    `json:"id"`
+	Name          string    `json:"name,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	LastAccessAt  time.Time `json:"last_access_at"`
 	Status        string    `json:"status"` // active, saved, resumed, expired
@@ -96,6 +97,7 @@ func (s *Store) initSchema() error {
 	query := `
 	CREATE TABLE IF NOT EXISTS sessions (
 		id TEXT PRIMARY KEY,
+		name TEXT,
 		created_at TIMESTAMP NOT NULL,
 		last_access_at TIMESTAMP NOT NULL,
 		status TEXT NOT NULL,
@@ -118,7 +120,41 @@ func (s *Store) initSchema() error {
 	if _, err := s.db.Exec(query); err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
+	if err := s.ensureColumn("sessions", "name", "TEXT"); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_session_name ON sessions(name) WHERE name IS NOT NULL AND name != ''`); err != nil {
+		return fmt.Errorf("failed to create session name index: %w", err)
+	}
 
+	return nil
+}
+
+func (s *Store) ensureColumn(table, column, definition string) error {
+	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return fmt.Errorf("failed to inspect %s schema: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var defaultValue interface{}
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("failed to scan %s schema: %w", table, err)
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition)); err != nil {
+		return fmt.Errorf("failed to add %s.%s column: %w", table, column, err)
+	}
 	return nil
 }
 
@@ -137,11 +173,12 @@ func (s *Store) Save(ctx context.Context, data *Data) error {
 
 	query := `
 	INSERT INTO sessions (
-		id, created_at, last_access_at, status, network, horizon_url, tx_hash,
+		id, name, created_at, last_access_at, status, network, horizon_url, tx_hash,
 		envelope_xdr, result_xdr, result_meta_xdr,
 		sim_request_json, sim_response_json, GLASSBOX_version, schema_version
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
+		name = excluded.name,
 		last_access_at = excluded.last_access_at,
 		status = excluded.status,
 		network = excluded.network,
@@ -157,7 +194,7 @@ func (s *Store) Save(ctx context.Context, data *Data) error {
 	`
 
 	_, err := s.db.ExecContext(ctx, query,
-		data.ID, data.CreatedAt, data.LastAccessAt, data.Status,
+		data.ID, data.Name, data.CreatedAt, data.LastAccessAt, data.Status,
 		data.Network, data.HorizonURL, data.TxHash,
 		data.EnvelopeXdr, data.ResultXdr, data.ResultMetaXdr,
 		data.SimRequestJSON, data.SimResponseJSON,
@@ -175,7 +212,7 @@ func (s *Store) Save(ctx context.Context, data *Data) error {
 // Load retrieves a session by ID
 func (s *Store) Load(ctx context.Context, sessionID string) (*Data, error) {
 	query := `
-	SELECT id, created_at, last_access_at, status, network, horizon_url, tx_hash,
+	SELECT id, name, created_at, last_access_at, status, network, horizon_url, tx_hash,
 	       envelope_xdr, result_xdr, result_meta_xdr,
 	       sim_request_json, sim_response_json, GLASSBOX_version, schema_version
 	FROM sessions
@@ -186,7 +223,7 @@ func (s *Store) Load(ctx context.Context, sessionID string) (*Data, error) {
 	var createdAt, lastAccessAt string
 
 	err := s.db.QueryRowContext(ctx, query, sessionID).Scan(
-		&data.ID, &createdAt, &lastAccessAt, &data.Status,
+		&data.ID, &data.Name, &createdAt, &lastAccessAt, &data.Status,
 		&data.Network, &data.HorizonURL, &data.TxHash,
 		&data.EnvelopeXdr, &data.ResultXdr, &data.ResultMetaXdr,
 		&data.SimRequestJSON, &data.SimResponseJSON,
@@ -218,6 +255,19 @@ func (s *Store) Load(ctx context.Context, sessionID string) (*Data, error) {
 	return &data, nil
 }
 
+// LoadByName retrieves a saved session snapshot by its user-facing bookmark name.
+func (s *Store) LoadByName(ctx context.Context, name string) (*Data, error) {
+	query := `SELECT id FROM sessions WHERE name = ?`
+	var id string
+	if err := s.db.QueryRowContext(ctx, query, name).Scan(&id); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("session name not found: %s", name)
+		}
+		return nil, fmt.Errorf("failed to load session by name: %w", err)
+	}
+	return s.Load(ctx, id)
+}
+
 // List returns recent sessions, ordered by last_access_at descending
 func (s *Store) List(ctx context.Context, limit int) ([]*Data, error) {
 	if limit <= 0 {
@@ -225,7 +275,7 @@ func (s *Store) List(ctx context.Context, limit int) ([]*Data, error) {
 	}
 
 	query := `
-	SELECT id, created_at, last_access_at, status, network, horizon_url, tx_hash,
+	SELECT id, name, created_at, last_access_at, status, network, horizon_url, tx_hash,
 	       envelope_xdr, result_xdr, result_meta_xdr,
 	       sim_request_json, sim_response_json, GLASSBOX_version, schema_version
 	FROM sessions
@@ -245,7 +295,7 @@ func (s *Store) List(ctx context.Context, limit int) ([]*Data, error) {
 		var createdAt, lastAccessAt string
 
 		scanErr := rows.Scan(
-			&data.ID, &createdAt, &lastAccessAt, &data.Status,
+			&data.ID, &data.Name, &createdAt, &lastAccessAt, &data.Status,
 			&data.Network, &data.HorizonURL, &data.TxHash,
 			&data.EnvelopeXdr, &data.ResultXdr, &data.ResultMetaXdr,
 			&data.SimRequestJSON, &data.SimResponseJSON,

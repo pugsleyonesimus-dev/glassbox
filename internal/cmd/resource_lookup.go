@@ -80,6 +80,9 @@ func resolveSessionInput(ctx context.Context, store *session.Store, input string
 	if err == nil {
 		return data, nil
 	}
+	if data, err := store.LoadByName(ctx, input); err == nil {
+		return data, nil
+	}
 
 	sessions, listErr := store.List(ctx, sessionLookupListLimit)
 	if listErr != nil {
@@ -115,6 +118,9 @@ func resolveSessionInput(ctx context.Context, store *session.Store, input string
 	for _, s := range sessions {
 		if s != nil && s.TxHash != "" {
 			candidates = append(candidates, s.TxHash)
+		}
+		if s != nil && s.Name != "" {
+			candidates = append(candidates, s.Name)
 		}
 	}
 	suggestion := closestStringMatch(input, candidates)

@@ -6,6 +6,9 @@ package security
 import (
 	"strings"
 	"testing"
+
+	"github.com/dotandev/glassbox/internal/abi"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func TestDetector_LargeValueTransfer(t *testing.T) {
@@ -197,5 +200,33 @@ func TestDetector_MultipleFindings(t *testing.T) {
 	}
 	if !hasHeuristic {
 		t.Error("Expected at least one heuristic warning")
+	}
+}
+
+func TestDetector_ScanMetadataAndSource(t *testing.T) {
+	detector := NewDetector()
+	spec := &abi.ContractSpec{
+		Functions: []xdr.ScSpecFunctionV0{
+			{Name: xdr.ScSymbol("mint_admin")},
+		},
+	}
+	findings := detector.ScanMetadata(spec, map[string]string{
+		"lib.rs": "pub fn mint_admin(env: Env) { env.storage().persistent().set(&key, &value); value.unwrap(); }",
+	})
+
+	var hasPrivileged, hasPanic bool
+	for _, f := range findings {
+		if strings.Contains(f.Title, "Privileged ABI") {
+			hasPrivileged = true
+		}
+		if strings.Contains(f.Title, "Panic-Prone") {
+			hasPanic = true
+		}
+	}
+	if !hasPrivileged {
+		t.Fatal("expected privileged ABI warning")
+	}
+	if !hasPanic {
+		t.Fatal("expected panic-prone source finding")
 	}
 }
